@@ -492,10 +492,10 @@ def get_telemetry(metric: str):
     """Fetches the past 24 hourly snapshots of availability for a station/metric
     to plot actual availability vs. the seasonal ML-predicted baseline bounds.
     """
-    client = bigquery.Client(project=PROJECT_ID)
     telemetry_data = []
     
     try:
+        client = bigquery.Client(project=PROJECT_ID)
         query = f"""
         SELECT snapshot_time, availability_pct
         FROM `{PROJECT_ID}.{DATASET_ID}.metrics_station_health`
