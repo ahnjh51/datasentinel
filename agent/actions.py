@@ -25,6 +25,7 @@ def post_to_discord(severity: str, title: str, body: str) -> dict:
         "info":     0x5865F2,   # Discord Blue
         "warning":  0xFEE75C,   # Discord Yellow
         "critical": 0xED4245,   # Discord Red
+        "resolved": 0x2ead4b,   # Wise Green (Success)
     }
 
     payload = {
