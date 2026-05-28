@@ -102,3 +102,25 @@ def test_ai_analyst_agent_loop(mock_gather_bike, mock_gather_github, mock_log, m
     assert "UPDATE" in report["fix_sql"]
     assert mock_log.called
     assert mock_post_discord.called
+
+
+def test_api_telemetry_simulated():
+    """Verifies that the get_telemetry endpoint function correctly returns simulated telemetry."""
+    from app.main import get_telemetry
+    data = get_telemetry("docomo-tokyo-shinjuku-east")
+    assert len(data) == 24
+    assert "time" in data[0]
+    assert "actual" in data[0]
+    assert "baseline" in data[0]
+
+
+def test_api_chat_heuristics():
+    """Verifies that the SRE Swarm Chat function responds successfully to operator questions."""
+    from app.main import sre_chat
+    payload = {
+        "anomaly_id": "mock-351a87b2",
+        "message": "Why did this trigger?"
+    }
+    data = sre_chat(payload)
+    assert "response" in data
+    assert len(data["response"]) > 10

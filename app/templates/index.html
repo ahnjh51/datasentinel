@@ -12,8 +12,13 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     
+    <!-- Chart.js CDN for visual SRE metrics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <!-- FontAwesome icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">    <style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">    
+    
+    <style>
         /* Premium Wise-Inspired CSS Styling */
         *, *::before, *::after {
             box-sizing: border-box;
@@ -504,12 +509,50 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* Interactive SRE Chat Feed bubble layout */
+        .chat-bubble {
+            padding: 10px 14px;
+            border-radius: var(--rounded-md);
+            max-width: 85%;
+            font-size: 13.5px;
+            line-height: 1.5;
+        }
+        
+        .chat-bubble-agent {
+            background: var(--canvas-soft);
+            color: var(--ink);
+            align-self: flex-start;
+            border-left: 3px solid var(--primary);
+        }
+        
+        .chat-bubble-operator {
+            background: var(--ink);
+            color: #ffffff;
+            align-self: flex-end;
+        }
+
+        .btn-github-link:hover {
+            background: #e1f5fe !important;
+            border-color: #01579b !important;
+            transform: scale(1.02);
+        }
+
         @media(max-width: 900px) {
             .grid-layout {
                 grid-template-columns: 1fr;
             }
         }
-    </style>e>
+
+        /* Floating progress console animations */
+        @keyframes spinner-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .progress-spinner {
+            animation: spinner-spin 1s linear infinite;
+            display: inline-block;
+        }
+    </style>
 </head>
 <body>
 
@@ -577,7 +620,7 @@
                     <tr>
                         <td>Dataset Access Status:</td>
                         {% if has_bq %}
-                        <td class="status-dot" style="color:var(--accent-green);"><i class="fa-solid fa-circle-check"></i> Connected</td>
+                        <td class="status-dot" style="color:var(--positive);"><i class="fa-solid fa-circle-check"></i> Connected</td>
                         {% else %}
                         <td class="status-dot"><i class="fa-solid fa-triangle-exclamation"></i> Mock Fallback Layer (Active)</td>
                         {% endif %}
@@ -620,7 +663,7 @@
         <!-- TAB CONTENT: GEMINI DIAGNOSIS -->
         <div id="tab-gemini" class="diagnostic-card active">
             <div id="gemini-content-container">
-                <div class="no-data">Select an active incident alert above to view Gemini SRE diagnosis.</div>
+                <div class="no-data">Select an active incident alert above to invoke Gemini SRE diagnostic swarm.</div>
             </div>
         </div>
 
@@ -659,8 +702,8 @@
     let stations = [
         { name: "Shinjuku Station Docomo Share", lat: 35.6895, lng: 139.6917, status: "healthy", bikes: 14, slots: 10 },
         { name: "Shibuya Station Docomo Share", lat: 35.6580, lng: 139.7016, status: "healthy", bikes: 18, slots: 8 },
-        { name: "Tokyo Station North Share", lat: 35.6812, lng: 139.7671, status: "warning", bikes: 2, slots: 22 },
-        { name: "Shinjuku East Docomo Share", lat: 35.6942, lng: 139.7028, status: "critical", bikes: 0, slots: 25 },
+        { name: "Tokyo Station North Share", lat: 35.6812, lng: 139.7671, status: "healthy", bikes: 12, slots: 12 },
+        { name: "Shinjuku East Docomo Share", lat: 35.6942, lng: 139.7028, status: "healthy", bikes: 15, slots: 9 },
         { name: "Roppongi Hills share station", lat: 35.6605, lng: 139.7291, status: "healthy", bikes: 11, slots: 9 }
     ];
 
@@ -714,6 +757,24 @@
             const edaRes = await fetch("/api/eda");
             currentEda = await edaRes.json();
             
+            // Adjust Leaflet map indicators based on current anomalous alert values
+            stations.forEach(s => {
+                s.status = "healthy"; // Reset
+            });
+            currentAnomalies.forEach(anom => {
+                if (anom.status !== "resolved") {
+                    let matchingStation = stations.find(s => anom.metric.includes("shinjuku") && s.name.includes("Shinjuku East"));
+                    if (anom.metric.includes("shibuya")) matchingStation = stations.find(s => s.name.includes("Shibuya"));
+                    if (anom.metric.includes("tokyo")) matchingStation = stations.find(s => s.name.includes("Tokyo"));
+                    
+                    if (matchingStation) {
+                        matchingStation.status = Math.abs(anom.z_score) > 5.0 ? "critical" : "warning";
+                        matchingStation.bikes = 0;
+                    }
+                }
+            });
+            renderMapMarkers();
+            
             renderAnomalies();
             renderLogs();
             if (document.getElementById("tab-eda").classList.contains("active")) {
@@ -733,16 +794,17 @@
 
         container.innerHTML = currentAnomalies.map(anom => {
             const severity = Math.abs(anom.z_score) > 5.0 || anom.z_score === 99.0 ? 'critical' : 'warning';
-            const badgeClass = `badge-${severity}`;
+            const badgeClass = anom.status === 'resolved' ? 'badge-info' : `badge-${severity}`;
             const activeClass = selectedAnomalyId === anom.id ? 'active' : '';
             const sourceClass = `source-${anom.source}`;
             const displayZ = anom.z_score === 99.0 ? "INFINITE (Policy)" : anom.z_score;
+            const statusLabel = anom.status === 'resolved' ? 'RESOLVED' : severity.toUpperCase();
             
             return `
-                <div class="anomaly-item ${activeClass}" onclick="selectAnomaly('${anom.id}')">
+                <div class="anomaly-item ${activeClass}" onclick="selectAnomaly('${anom.id}')" style="${anom.status === 'resolved' ? 'opacity: 0.75;' : ''}">
                     <div class="anomaly-meta">
                         <span class="anomaly-source ${sourceClass}">${anom.source}</span>
-                        <span class="anomaly-badge ${badgeClass}">${severity.toUpperCase()}</span>
+                        <span class="anomaly-badge ${badgeClass}">${statusLabel}</span>
                     </div>
                     <div class="anomaly-metric">${anom.metric}</div>
                     <div class="anomaly-details">
@@ -765,7 +827,7 @@
         container.innerHTML = `
             <div style="display:flex; flex-direction:column; gap:16px;">
                 ${currentLogs.map(log => {
-                    const badgeClass = log.classification === 'critical' ? 'badge-critical' : 'badge-warning';
+                    const badgeClass = log.classification === 'critical' ? 'badge-critical' : (log.classification === 'resolved' ? 'badge-info' : 'badge-warning');
                     return `
                         <div style="border-bottom:1px solid var(--border-glow); padding-bottom:16px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -774,6 +836,7 @@
                             </div>
                             <div style="font-weight:900; font-size:16px; margin-bottom:4px; color:var(--ink);">Action Taken: ${log.action}</div>
                             <div class="diagnostic-content" style="color:var(--body); font-size:15px; margin-bottom:8px;">${log.human_message}</div>
+                            ${log.github_issue_url ? `<div style="font-size:13px; margin-bottom:8px;"><i class="fa-brands fa-github"></i> GitHub Issue: <a href="${log.github_issue_url}" target="_blank">${log.github_issue_url}</a></div>` : ''}
                             <div style="font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--mute);">Anomaly Ref: ${log.anomaly_id}</div>
                         </div>
                     `;
@@ -782,25 +845,126 @@
         `;
     }
 
+    // Chart.js global instance
+    let telemetryChartInstance = null;
+
+    async function loadTelemetryChart(metricName) {
+        const canvas = document.getElementById("telemetry-chart-canvas");
+        if (!canvas) return;
+
+        try {
+            const res = await fetch(`/api/telemetry?metric=${encodeURIComponent(metricName)}`);
+            const data = await res.json();
+
+            const labels = data.map(d => d.time);
+            const actuals = data.map(d => d.actual);
+            const baselines = data.map(d => d.baseline);
+            const lowerBounds = data.map(d => d.lower_bound);
+            const upperBounds = data.map(d => d.upper_bound);
+
+            const borderColors = actuals.map(v => v === 0 ? 'var(--negative)' : '#2ead4b');
+            
+            if (telemetryChartInstance) {
+                telemetryChartInstance.destroy();
+            }
+
+            const ctx = canvas.getContext('2d');
+            telemetryChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Actual Telemetry Value %',
+                            data: actuals,
+                            borderColor: '#2ead4b',
+                            backgroundColor: 'rgba(46, 173, 75, 0.08)',
+                            borderWidth: 3,
+                            pointBackgroundColor: borderColors,
+                            pointRadius: 4,
+                            tension: 0.2
+                        },
+                        {
+                            label: 'ML Seasonal Baseline %',
+                            data: baselines,
+                            borderColor: '#868685',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Upper Bound (+3.0 Z-Score)',
+                            data: upperBounds,
+                            borderColor: 'rgba(208, 50, 56, 0.12)',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            fill: '+1',
+                            backgroundColor: 'rgba(14, 15, 12, 0.03)',
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Lower Bound (-3.0 Z-Score)',
+                            data: lowerBounds,
+                            borderColor: 'rgba(208, 50, 56, 0.12)',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                font: { family: 'Inter', size: 11, weight: '600' },
+                                color: 'var(--ink)'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Inter', size: 10 }, color: 'var(--mute)' }
+                        },
+                        y: {
+                            min: 0,
+                            max: 100,
+                            ticks: { font: { family: 'Inter', size: 10 }, color: 'var(--mute)' }
+                        }
+                    }
+                }
+            });
+        } catch (e) {
+            console.error("Telemetry chart failure: ", e);
+        }
+    }
+
     function selectAnomaly(id) {
         selectedAnomalyId = id;
         renderAnomalies();
         
         // Find matching diagnostic log
         const log = currentLogs.find(l => l.anomaly_id === id);
+        const anomaly = currentAnomalies.find(a => a.id === id);
         const container = document.getElementById("gemini-content-container");
         
-        if (!log) {
+        if (!log || !anomaly) {
             container.innerHTML = `
                 <div class="no-data">
                     <i class="fa-solid fa-brain" style="font-size:28px; color:var(--primary); margin-bottom:12px;"></i><br>
-                    Gemini diagnosis is currently loading or analyzing telemetry context...
+                    Gemini SRE diagnostics are currently compiling telemetry analytics...
                 </div>
             `;
             return;
         }
 
-        const scoreColor = log.classification === 'critical' ? 'var(--negative-darkest)' : 'var(--warning-deep)';
+        const scoreColor = log.classification === 'critical' ? 'var(--negative-darkest)' : (log.classification === 'resolved' ? 'var(--positive)' : 'var(--warning-deep)');
         
         container.innerHTML = `
             <div class="diagnostic-header" style="margin-bottom:28px;">
@@ -815,8 +979,62 @@
                 </div>
             </div>
 
-            <!-- WAR ROOM CHAT FEED -->
-            <div class="war-room-feed" style="display:flex; flex-direction:column; gap:18px; background:var(--canvas-soft); padding:20px; border-radius:var(--rounded-lg); border:1px solid var(--border-glow); margin-bottom:28px;">
+            <!-- DYNAMIC TELEMETRY & ML BASELINES CHART -->
+            <div class="diagnostic-section" style="border:1px solid var(--border-glow); border-radius:var(--rounded-lg); padding:24px; background:var(--canvas); margin-bottom:24px;">
+                <div style="font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--mute); margin-bottom:12px;">
+                    <i class="fa-solid fa-chart-area" style="color:var(--primary);"></i> Live Telemetry vs. Seasonal ML Baseline (24 Hours)
+                </div>
+                <div style="position:relative; height:240px; width:100%;">
+                    <canvas id="telemetry-chart-canvas"></canvas>
+                </div>
+            </div>
+
+            <!-- RICH COGNITIVE REASONING COLUMNS -->
+            <div class="diagnostic-section" style="display:grid; grid-template-columns: 1fr 1.5fr; gap:24px; margin-bottom:24px;">
+                <!-- LEFT COLUMN: COGNITIVE DATA -->
+                <div style="display:flex; flex-direction:column; gap:16px;">
+                    <div style="background:var(--canvas-soft); padding:16px; border-radius:var(--rounded-md); border:1px solid var(--border-glow);">
+                        <div style="font-size:11px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Anomaly Severity</div>
+                        <div style="font-size:18px; font-weight:900; color:${scoreColor}; margin-top:4px; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fa-solid fa-triangle-exclamation"></i> ${log.classification}
+                        </div>
+                    </div>
+                    
+                    <div style="background:var(--canvas-soft); padding:16px; border-radius:var(--rounded-md); border:1px solid var(--border-glow);">
+                        <div style="font-size:11px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Anomaly Nature</div>
+                        <div style="font-size:16px; font-weight:900; color:var(--ink); margin-top:4px; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fa-solid fa-circle-nodes"></i> ${log.anomaly_nature ? log.anomaly_nature.replace(/_/g, ' ') : 'REAL WORLD EVENT'}
+                        </div>
+                    </div>
+
+                    ${anomaly.github_issue_url ? `
+                    <a href="${anomaly.github_issue_url}" target="_blank" style="text-decoration:none;">
+                        <div class="btn-github-link" style="background:#e1f5fe; padding:16px; border-radius:var(--rounded-md); border:1px solid #0288d1; transition:all 0.2s; cursor:pointer; display:flex; flex-direction:column;">
+                            <span style="font-size:11px; color:#0277bd; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">GitHub Tracking Link</span>
+                            <span style="font-size:14px; font-weight:900; color:#01579b; margin-top:4px; display:flex; align-items:center; gap:6px;">
+                                <i class="fa-brands fa-github"></i> Autonomous Issue <i class="fa-solid fa-up-right-from-square" style="font-size:11px;"></i>
+                            </span>
+                        </div>
+                    </a>
+                    ` : ''}
+                </div>
+                
+                <!-- RIGHT COLUMN: DETAILED DIAGNOSIS -->
+                <div style="display:flex; flex-direction:column; gap:16px;">
+                    <div style="background:var(--canvas); border:1px solid var(--border-glow); padding:20px; border-radius:var(--rounded-lg);">
+                        <div style="font-size:11px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Downstream Impact (Why This Matters)</div>
+                        <div style="font-size:14px; color:var(--body); line-height:1.6;">${log.impact_analysis || 'Analyzing potential system or service level disruptions.'}</div>
+                    </div>
+                    
+                    <div style="background:var(--canvas); border:1px solid var(--border-glow); padding:20px; border-radius:var(--rounded-lg);">
+                        <div style="font-size:11px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Recommended Operator Recovery Action</div>
+                        <div style="font-size:14px; color:var(--body); line-height:1.6;">${log.recommended_action || 'Inspect live logs, execute standard procedures, and verify metrics consistency.'}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WAR ROOM CHAT FEED (COLLABORATING AGENTS) -->
+            <div class="war-room-feed" style="display:flex; flex-direction:column; gap:18px; background:var(--canvas-soft); padding:20px; border-radius:var(--rounded-lg); border:1px solid var(--border-glow); margin-bottom:24px;">
                 
                 <!-- Chat 1: Triage Agent -->
                 <div style="display:flex; gap:14px; align-items:flex-start;">
@@ -864,6 +1082,27 @@
 
             </div>
 
+            <!-- INTERACTIVE SRE SWARM CHAT CONSOLE (LIVE PLAYGROUND) -->
+            <div class="diagnostic-section" style="border:1px solid var(--border-glow); border-radius:var(--rounded-lg); padding:24px; background:var(--canvas-soft); margin-bottom:24px;">
+                <div style="font-weight:900; color:var(--ink); font-size:16px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                    <i class="fa-solid fa-comments" style="color:var(--primary);"></i> Collaborative SRE Swarm Chat Terminal
+                </div>
+                
+                <div id="chat-messages-container" style="background:var(--canvas); border:1px solid var(--border-glow); border-radius:var(--rounded-md); height:220px; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; margin-bottom:12px;">
+                    <div style="color:var(--mute); font-size:13px; text-align:center; padding-top:80px;" id="chat-empty-msg">
+                        <i class="fa-solid fa-network-wired" style="font-size:24px; color:var(--primary); margin-bottom:8px;"></i><br>
+                        SRE Console initialized. Ask the agent swarm questions about this anomaly!
+                    </div>
+                </div>
+                
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="chat-input-bar" placeholder="> Type question to the SRE Swarm (e.g. 'Why did this trigger?' or 'Show me resolution SQL')..." style="flex-grow:1; background:var(--canvas); border:1px solid var(--border-glow); border-radius:var(--rounded-md); padding:12px 16px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--ink); outline:none;" onkeypress="handleChatKey(event, '${log.anomaly_id}')">
+                    <button onclick="sendSreMessage('${log.anomaly_id}')" class="btn btn-primary" style="margin:0; padding:10px 20px; font-size:14px; font-weight:900; border-radius:var(--rounded-md);">
+                        <i class="fa-solid fa-paper-plane"></i> Send
+                    </button>
+                </div>
+            </div>
+
             <!-- INTERACTIVE REMEDIATION PANEL -->
             <div class="diagnostic-section" style="border:1px solid var(--border-glow); border-radius:var(--rounded-lg); padding:24px; background:var(--canvas);">
                 <div class="diagnostic-title" style="font-weight:900; color:var(--ink); font-size:16px; margin-bottom:12px;">
@@ -881,12 +1120,87 @@
                     <span style="font-size:13px; color:var(--body); font-style:italic;">
                         <i class="fa-solid fa-comment-dots"></i> <strong>Operator Note:</strong> "${log.human_message}"
                     </span>
+                    ${anomaly.status !== 'resolved' ? `
                     <button id="btn-heal-${log.anomaly_id}" onclick="applyRemediation('${log.anomaly_id}', \`${log.fix_sql.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)" class="btn btn-primary" style="margin:0; box-shadow:0 0 15px rgba(159,232,112,0.3); font-weight:900;">
                         <i class="fa-solid fa-bolt"></i> Run Auto-Remediation SQL
                     </button>
+                    ` : `
+                    <button class="btn" style="margin:0; background:var(--primary-pale); color:var(--positive-deep); border-color:rgba(46, 173, 75, 0.3); cursor:default;" disabled>
+                        <i class="fa-solid fa-circle-check"></i> Remediation Complete
+                    </button>
+                    `}
                 </div>
             </div>
         `;
+
+        // Load telemetry Chart.js curve for the selected metric
+        loadTelemetryChart(anomaly.metric);
+    }
+
+    // Chatbot keypress and send functions
+    function handleChatKey(event, anomalyId) {
+        if (event.key === 'Enter') {
+            sendSreMessage(anomalyId);
+        }
+    }
+
+    async function sendSreMessage(anomalyId) {
+        const input = document.getElementById("chat-input-bar");
+        const container = document.getElementById("chat-messages-container");
+        const emptyMsg = document.getElementById("chat-empty-msg");
+        
+        const message = input.value.strip ? input.value.strip() : input.value.trim();
+        if (!message) return;
+        
+        input.value = "";
+        if (emptyMsg) emptyMsg.style.display = "none";
+        
+        // Append user bubble
+        container.innerHTML += `
+            <div class="chat-bubble chat-bubble-operator">
+                <strong>You (Operator):</strong> ${message}
+            </div>
+        `;
+        container.scrollTop = container.scrollHeight;
+        
+        // Append typing indicator
+        const typingId = "typing-" + Math.random().toString(36).substring(7);
+        container.innerHTML += `
+            <div class="chat-bubble chat-bubble-agent" id="${typingId}">
+                <i class="fa-solid fa-spinner spinner"></i> SRE Swarm is analyzing telemetry context...
+            </div>
+        `;
+        container.scrollTop = container.scrollHeight;
+
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ anomaly_id: anomalyId, message: message })
+            });
+            const data = await res.json();
+            
+            // Remove typing indicator and append agent bubble
+            const typingBubble = document.getElementById(typingId);
+            if (typingBubble) typingBubble.remove();
+            
+            container.innerHTML += `
+                <div class="chat-bubble chat-bubble-agent">
+                    <strong>SRE Swarm (Orchestrator):</strong> ${data.response}
+                </div>
+            `;
+            container.scrollTop = container.scrollHeight;
+        } catch (e) {
+            const typingBubble = document.getElementById(typingId);
+            if (typingBubble) typingBubble.remove();
+            
+            container.innerHTML += `
+                <div class="chat-bubble chat-bubble-agent" style="color:var(--negative);">
+                    <strong>Error:</strong> Failed to connect to SRE Swarm chatbot.
+                </div>
+            `;
+            container.scrollTop = container.scrollHeight;
+        }
     }
 
     async function applyRemediation(anomalyId, fixSql) {
@@ -911,15 +1225,16 @@
             });
             const data = await res.json();
             
-            term.innerHTML += `<div style="color:var(--primary); font-weight:600;">[${new Date().toLocaleTimeString()}] SUCCESS: BigQuery state resolved!</div>`;
+            term.innerHTML += `<div style="color:var(--positive); font-weight:600;">[${new Date().toLocaleTimeString()}] SUCCESS: BigQuery state resolved!</div>`;
+            if (data.github_closed) {
+                term.innerHTML += `<div style="color:#e1f5fe;">[${new Date().toLocaleTimeString()}] GitHub Autonomous Tracker Issue closed successfully.</div>`;
+            }
             term.innerHTML += `<div style="color:#aae4ff;">[${new Date().toLocaleTimeString()}] Discord RESOLVED embed broadcasted successfully.</div>`;
             
-            // Instantly clear map warning indicators in local map visualization!
+            // Instantly clear Leaflet map warnings in local map visualization
             stations.forEach(s => {
-                if (s.name.includes("Shinjuku East") || s.name.includes("Tokyo Station")) {
-                    s.status = "healthy";
-                    s.bikes = 15;
-                }
+                s.status = "healthy";
+                s.bikes = 15;
             });
             renderMapMarkers();
             
@@ -930,6 +1245,12 @@
                 btn.style.background = "var(--primary-pale)";
                 btn.style.color = "var(--positive-deep)";
                 btn.style.borderColor = "rgba(46, 173, 75, 0.3)";
+                
+                // Reload telemetry graph to show restored nominal baseline
+                const currentAnom = currentAnomalies.find(a => a.id === anomalyId);
+                if (currentAnom) {
+                    loadTelemetryChart(currentAnom.metric);
+                }
             }, 1500);
             
         } catch (e) {
@@ -1036,6 +1357,101 @@
         }
     }
 
+    // Live SRE Progress Terminal Controller Logic
+    let progressIntervalId = null;
+
+    function showProgressTerminal(type) {
+        const modal = document.getElementById("progress-terminal-modal");
+        const logsContainer = document.getElementById("progress-terminal-logs");
+        const statusText = document.getElementById("progress-status-text");
+        const footer = document.getElementById("progress-terminal-footer");
+        
+        modal.style.display = "flex";
+        logsContainer.innerHTML = "";
+        statusText.innerHTML = `<i class="fa-solid fa-spinner spinner"></i> Coordinating autonomous SRE swarm agents...`;
+        footer.innerHTML = `<span style="font-size:12px; color:var(--mute); font-style:italic;" id="progress-status-text"><i class="fa-solid fa-spinner spinner"></i> Coordinating autonomous SRE swarm agents...</span>`;
+        
+        const steps = [
+            { text: `[SYSTEM] Initiating SRE Swarm loops for target metrics: ${type.toUpperCase()}` },
+            { text: "[TRIAGE] TriageAgent.bot spawned. Scanning live metrics feed..." },
+            { text: "[TRIAGE] WARNING: Live values deviate from historical averages!" },
+            { text: "[TRIAGE] Classifying severity and spawning swarm SRE agents..." },
+            { text: "[DB_ARCHAEOLOGIST] DBArchaeologist.bot querying rolling 7-day baselines..." },
+            { text: "[SURGEON] DatabaseSurgeon.bot compiling cognitive impact analysis..." },
+            { text: "[GITHUB] Autonomously opening trackable SRE Tracking Issue in repository..." },
+            { text: "[DISCORD] Broadcasting critical diagnostic embed alert..." },
+            { text: "[BIGQUERY] Writing diagnostic records to GCP BigQuery agent_actions_log..." }
+        ];
+        
+        let currentStep = 0;
+        
+        // Immediate first step
+        const logEntry = document.createElement("div");
+        logEntry.innerHTML = `<span style="color:var(--mute);">${new Date().toLocaleTimeString()}</span> ${steps[currentStep].text}`;
+        logEntry.style.color = "#ffffff";
+        logsContainer.appendChild(logEntry);
+        currentStep++;
+        
+        progressIntervalId = setInterval(() => {
+            if (currentStep < steps.length) {
+                const logEntry = document.createElement("div");
+                logEntry.style.opacity = "0";
+                logEntry.style.transition = "opacity 0.2s ease";
+                logEntry.innerHTML = `<span style="color:var(--mute);">${new Date().toLocaleTimeString()}</span> ${steps[currentStep].text}`;
+                
+                // Color bots specifically
+                if (steps[currentStep].text.includes("[TRIAGE]")) logEntry.style.color = "#38c8ff"; // Blue
+                if (steps[currentStep].text.includes("[DB_ARCHAEOLOGIST]")) logEntry.style.color = "#ffc091"; // Peach
+                if (steps[currentStep].text.includes("[SURGEON]")) logEntry.style.color = "var(--primary)"; // Wise Lime
+                if (steps[currentStep].text.includes("[GITHUB]")) logEntry.style.color = "#81d4fa"; // Github Sky
+                if (steps[currentStep].text.includes("[DISCORD]")) logEntry.style.color = "#ffd11a"; // Discord Yellow
+                
+                logsContainer.appendChild(logEntry);
+                setTimeout(() => { logEntry.style.opacity = "1"; }, 50);
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+                currentStep++;
+            } else {
+                clearInterval(progressIntervalId);
+            }
+        }, 1100);
+    }
+
+    function hideProgressTerminal(success, message) {
+        if (progressIntervalId) {
+            clearInterval(progressIntervalId);
+        }
+        
+        const logsContainer = document.getElementById("progress-terminal-logs");
+        const statusText = document.getElementById("progress-status-text");
+        const footer = document.getElementById("progress-terminal-footer");
+        
+        if (success) {
+            statusText.innerHTML = `<span style="color:var(--primary); font-weight:900;"><i class="fa-solid fa-circle-check"></i> SRE SWARM RESOLVED NOMINAL</span>`;
+            logsContainer.innerHTML += `<div style="color:var(--primary); font-weight:900; margin-top:8px;">[SUCCESS] Live SRE loops processed successfully. Telemetry flagged!</div>`;
+        } else {
+            statusText.innerHTML = `<span style="color:var(--negative); font-weight:900;"><i class="fa-solid fa-circle-xmark"></i> EXECUTION FAILED</span>`;
+            logsContainer.innerHTML += `<div style="color:var(--negative); font-weight:900; margin-top:8px;">[ERROR] Pipeline failure: ${message}</div>`;
+        }
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+        
+        // Add Close Button
+        footer.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                <span style="font-size:12px; color:${success ? 'var(--primary)' : 'var(--negative)'}; font-weight:600;">
+                    ${success ? '✔ Autonomous SRE Alert Dispatched' : '✘ Verification Failed'}
+                </span>
+                <button onclick="closeProgressTerminal()" class="btn btn-primary" style="margin:0; padding:8px 20px; font-size:13px; border-radius:6px; font-weight:900;">
+                    Dismiss Console
+                </button>
+            </div>
+        `;
+    }
+
+    function closeProgressTerminal() {
+        const modal = document.getElementById("progress-terminal-modal");
+        modal.style.display = "none";
+    }
+
     // Ingest loops trigger API calls
     async function triggerIngest(source) {
         const btn = source === 'citybikes' ? document.getElementById("btn-bikes") : document.getElementById("btn-github");
@@ -1043,21 +1459,22 @@
         btn.innerHTML = `<i class="fa-solid fa-spinner spinner"></i> Processing...`;
         btn.disabled = true;
 
+        showProgressTerminal(source);
+
         try {
             const res = await fetch(`/ingest/${source}`, { method: "POST" });
             const data = await res.json();
             
-            // Adjust mock map coordinates if ingestion triggered low bike warnings
             if (source === 'citybikes') {
                 stations[3].status = "critical";
                 stations[3].bikes = 0;
                 renderMapMarkers();
             }
 
-            // Play sound, refresh data
-            refreshDashboardData();
+            await refreshDashboardData();
+            hideProgressTerminal(true);
+            
             setTimeout(() => {
-                // Autoselect the newly created anomaly
                 if (currentAnomalies.length > 0) {
                     selectAnomaly(currentAnomalies[0].id);
                 }
@@ -1065,6 +1482,7 @@
 
         } catch (e) {
             console.error("Trigger ingestion error: ", e);
+            hideProgressTerminal(false, e.message);
         } finally {
             btn.innerHTML = origHtml;
             btn.disabled = false;
@@ -1077,17 +1495,21 @@
         btn.disabled = true;
         btn.innerHTML = `<i class="fa-solid fa-spinner spinner"></i> Triggering Alert...`;
 
+        showProgressTerminal("citybikes (demo)");
+
         try {
-            const res = await fetch("/api/test-alert?severity=critical&source=github", { method: "POST" });
-            await res.json();
+            const res = await fetch("/api/test-alert?severity=critical&source=citybikes", { method: "POST" });
+            const data = await res.json();
             
             await refreshDashboardData();
+            hideProgressTerminal(true);
             
             if (currentAnomalies.length > 0) {
                 selectAnomaly(currentAnomalies[0].id);
             }
         } catch (e) {
             console.error("Test alert trigger failed: ", e);
+            hideProgressTerminal(false, e.message);
         } finally {
             btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Trigger Test Alert`;
             btn.disabled = false;
@@ -1095,8 +1517,38 @@
     }
 
     // Initial Load & Polling Loop (refresh every 10 seconds)
-    refreshDashboardData();
+    async function initDashboard() {
+        await refreshDashboardData();
+        if (currentAnomalies.length > 0) {
+            selectAnomaly(currentAnomalies[0].id);
+        }
+    }
+    
+    initDashboard();
     setInterval(refreshDashboardData, 10000);
 </script>
+
+<!-- FLOATING SRE LIVE PROGRESS MODAL -->
+<div id="progress-terminal-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(14,15,12,0.65); z-index:9999; backdrop-filter:blur(8px); align-items:center; justify-content:center;">
+    <div style="background:var(--ink); color:#aae4ff; font-family:'JetBrains Mono',monospace; border:1px solid rgba(255,255,255,0.08); border-radius:var(--rounded-lg); padding:32px; width:90%; max-width:620px; box-shadow:0 24px 64px rgba(0,0,0,0.6); display:flex; flex-direction:column; gap:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
+            <span style="font-weight:900; color:#ffffff; font-size:14px; display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-terminal" style="color:var(--primary);"></i> SRE Swarm Live Execution Console
+            </span>
+            <span style="font-size:12px; color:var(--mute);">asia-northeast1 (Tokyo)</span>
+        </div>
+        
+        <div id="progress-terminal-logs" style="height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; font-size:12.5px; line-height:1.6; padding-right:8px; border-radius:var(--rounded-sm); background:rgba(0,0,0,0.2); padding:12px;">
+            <!-- Live steps will append here -->
+        </div>
+        
+        <div style="display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.1); padding-top:12px;" id="progress-terminal-footer">
+            <span style="font-size:12px; color:var(--mute); font-style:italic;" id="progress-status-text">
+                <i class="fa-solid fa-spinner progress-spinner"></i> Coordinating autonomous SRE swarm agents...
+            </span>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
