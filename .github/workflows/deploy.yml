@@ -1,0 +1,71 @@
+name: Deploy DataSentinel
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  REGION: asia-northeast1
+  SERVICE_NAME: datasentinel
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --tb=short
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and Push Docker image
+        run: |
+          BUILD_ID=$(gcloud builds submit --tag $REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/datasentinel/app:${{ github.sha }} --async --format="value(id)" --quiet)
+          echo "Build successfully queued with ID: $BUILD_ID"
+          echo "Waiting for build to finish..."
+          while true; do
+            STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)" --quiet)
+            echo "Current build status: $STATUS"
+            if [ "$STATUS" = "SUCCESS" ]; then
+              echo "Build succeeded!"
+              break
+            elif [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "INTERNAL_ERROR" ] || [ "$STATUS" = "TIMEOUT" ] || [ "$STATUS" = "CANCELLED" ]; then
+              echo "Build failed with status: $STATUS"
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Deploy to Google Cloud Run
+        run: |
+          gcloud run deploy $SERVICE_NAME \
+            --image $REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/datasentinel/app:${{ github.sha }} \
+            --region $REGION \
+            --allow-unauthenticated \
+            --min-instances=0 --max-instances=3 \
+            --set-env-vars=GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }} \
+            --set-env-vars=DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
+            --set-env-vars=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}

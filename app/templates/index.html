@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataSentinel — Autonomous SRE AI Agent</title>
+    
+    <!-- Premium Google Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    
+    <!-- Leaflet.js Map CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* Modern Glassmorphic CSS Styling */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --canvas: #0a0b10;
+            --ink: #ffffff;
+            --soft-white: rgba(255, 255, 255, 0.03);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --border-glow: rgba(255, 255, 255, 0.08);
+            --text-secondary: #a0aec0;
+            --accent-blue: #5865F2;
+            --accent-yellow: #FEE75C;
+            --accent-red: #ED4245;
+            --accent-green: #56d364;
+            --glass-blur: blur(12px);
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--canvas);
+            color: var(--ink);
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(88, 101, 242, 0.15) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(237, 66, 69, 0.1) 0px, transparent 50%);
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding-bottom: 60px;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Nav Bar styles */
+        nav {
+            backdrop-filter: var(--glass-blur);
+            background: rgba(10, 11, 16, 0.7);
+            border-bottom: 1px solid var(--border-glow);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 72px;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #fff 30%, #5865F2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo i {
+            -webkit-text-fill-color: var(--accent-blue);
+        }
+
+        .badge-status {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 50px;
+            background: rgba(86, 211, 100, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(86, 211, 100, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-status::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+            display: inline-block;
+        }
+
+        /* Hero Area */
+        .hero {
+            padding: 48px 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        h1 {
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 16px;
+            margin-top: 6px;
+            font-weight: 300;
+        }
+
+        .buttons-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* Stunning Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid var(--border-glow);
+            background: var(--soft-white);
+            color: var(--ink);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            font-family: inherit;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            border-color: rgba(88, 101, 242, 0.5);
+        }
+
+        .btn-primary:hover {
+            background: #4752c4;
+            border-color: var(--accent-blue);
+            box-shadow: 0 10px 20px rgba(88, 101, 242, 0.25);
+        }
+
+        .btn-test {
+            background: rgba(237, 66, 69, 0.1);
+            border-color: rgba(237, 66, 69, 0.3);
+            color: var(--accent-red);
+        }
+
+        .btn-test:hover {
+            background: var(--accent-red);
+            color: var(--ink);
+            border-color: var(--accent-red);
+            box-shadow: 0 10px 20px rgba(237, 66, 69, 0.25);
+        }
+
+        /* Glass Cards grid */
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-glow);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%);
+            pointer-events: none;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Map styling */
+        #map {
+            height: 480px;
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid var(--border-glow);
+            background: #111;
+            z-index: 1;
+        }
+
+        /* Info boxes */
+        .gcp-indicator {
+            padding: 14px 18px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glow);
+            margin-bottom: 20px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .gcp-indicator table {
+            width: 100%;
+            margin-top: 8px;
+            border-collapse: collapse;
+        }
+
+        .gcp-indicator td {
+            padding: 4px 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+        }
+
+        .gcp-indicator td.val {
+            color: var(--accent-blue);
+            text-align: right;
+        }
+
+        .gcp-indicator td.status-dot {
+            color: var(--accent-yellow);
+            font-weight: 600;
+        }
+
+        /* Anomalies List */
+        .anomalies-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 480px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .anomaly-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glow);
+            border-radius: 14px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            position: relative;
+        }
+
+        .anomaly-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: scale(1.01);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .anomaly-item.active {
+            border-color: var(--accent-blue);
+            background: rgba(88, 101, 242, 0.04);
+            box-shadow: 0 0 15px rgba(88, 101, 242, 0.15);
+        }
+
+        .anomaly-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .anomaly-source {
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .source-citybikes {
+            background: rgba(86, 211, 100, 0.1);
+            color: var(--accent-green);
+        }
+
+        .source-github {
+            background: rgba(88, 101, 242, 0.1);
+            color: var(--accent-blue);
+        }
+
+        .anomaly-badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .badge-info { background: rgba(88, 101, 242, 0.15); color: var(--accent-blue); }
+        .badge-warning { background: rgba(254, 231, 92, 0.15); color: var(--accent-yellow); }
+        .badge-critical { background: rgba(237, 66, 73, 0.15); color: var(--accent-red); }
+
+        .anomaly-metric {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.2px;
+        }
+
+        .anomaly-details {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .anomaly-time {
+            font-size: 11px;
+            margin-top: 4px;
+            display: block;
+        }
+
+        /* Tabs and Details Area */
+        .bottom-section {
+            margin-top: 24px;
+        }
+
+        .tabs-header {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-glow);
+            margin-bottom: 18px;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 15px;
+            font-weight: 600;
+            padding: 12px 18px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--ink);
+        }
+
+        .tab-btn.active {
+            color: var(--ink);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        /* Detail Panel Card */
+        .diagnostic-card {
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid var(--border-glow);
+            border-radius: 18px;
+            padding: 24px;
+            display: none;
+        }
+
+        .diagnostic-card.active {
+            display: block;
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .diagnostic-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .score-circle {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid var(--accent-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--accent-blue);
+        }
+
+        .diagnostic-section {
+            margin-bottom: 20px;
+        }
+
+        .diagnostic-title {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .diagnostic-content {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #e2e8f0;
+        }
+
+        pre {
+            background: #050608;
+            color: #d1d5db;
+            border: 1px solid var(--border-glow);
+            border-radius: 10px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12.5px;
+            overflow-x: auto;
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .no-data {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 40px 0;
+            font-size: 14px;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media(max-width: 900px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER BAR -->
+<nav>
+    <div class="container">
+        <div class="nav-inner">
+            <div class="logo">
+                <i class="fa-solid fa-shield-halved"></i> DataSentinel
+            </div>
+            <div style="display:flex; gap:12px; align-items:center;">
+                <span class="badge-status">System Active</span>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    
+    <!-- HERO SECTION -->
+    <div class="hero">
+        <div>
+            <h1>Tokyo Live Monitoring</h1>
+            <p class="subtitle">Autonomous AI SRE & DevOps Observability loop in asia-northeast1</p>
+        </div>
+        <div class="buttons-group">
+            <button class="btn" id="btn-bikes" onclick="triggerIngest('citybikes')">
+                <i class="fa-solid fa-bicycle"></i> Ingest Tokyo Bikes
+            </button>
+            <button class="btn" id="btn-github" onclick="triggerIngest('github')">
+                <i class="fa-solid fa-code-branch"></i> Ingest GitHub Events
+            </button>
+            <button class="btn btn-test" id="btn-test" onclick="triggerTestAlert()">
+                <i class="fa-solid fa-triangle-exclamation"></i> Trigger Test Alert
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN GRID CONTAINER -->
+    <div class="grid-layout">
+        
+        <!-- COLUMN 1: LIVE MAP -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fa-solid fa-map-location-dot"></i> Tokyo Live Networks Map
+                </div>
+            </div>
+            
+            <div class="gcp-indicator">
+                <div><i class="fa-solid fa-circle-info"></i> <strong>Deployment telemetry:</strong></div>
+                <table>
+                    <tr>
+                        <td>Active GCP Project:</td>
+                        <td class="val">{{ project_id }}</td>
+                    </tr>
+                    <tr>
+                        <td>BigQuery Dataset:</td>
+                        <td class="val">{{ dataset_id }}</td>
+                    </tr>
+                    <tr>
+                        <td>Processing region:</td>
+                        <td class="val">{{ region }}</td>
+                    </tr>
+                    <tr>
+                        <td>Dataset Access Status:</td>
+                        {% if has_bq %}
+                        <td class="status-dot" style="color:var(--accent-green);"><i class="fa-solid fa-circle-check"></i> Connected</td>
+                        {% else %}
+                        <td class="status-dot"><i class="fa-solid fa-triangle-exclamation"></i> Mock Fallback Layer (Active)</td>
+                        {% endif %}
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Leaflet Interactive Map -->
+            <div id="map"></div>
+        </div>
+        
+        <!-- COLUMN 2: ANOMALIES LIST -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fa-solid fa-bell"></i> Flagged Incident Alerts
+                </div>
+            </div>
+            <div class="anomalies-list" id="anomalies-container">
+                <div class="no-data"><i class="fa-solid fa-spinner spinner"></i> Loading incident alerts...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- BOTTOM ROW: TABS & GEMINI DIAGNOSTICS -->
+    <div class="bottom-section container card" style="width:100%;">
+        <div class="tabs-header">
+            <button class="tab-btn active" onclick="switchTab('gemini')">
+                <i class="fa-solid fa-brain"></i> Gemini SRE Diagnosis
+            </button>
+            <button class="tab-btn" onclick="switchTab('logs')">
+                <i class="fa-solid fa-clipboard-list"></i> Incident Actions Log
+            </button>
+        </div>
+
+        <!-- TAB CONTENT: GEMINI DIAGNOSIS -->
+        <div id="tab-gemini" class="diagnostic-card active">
+            <div id="gemini-content-container">
+                <div class="no-data">Select an active incident alert above to view Gemini SRE diagnosis.</div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT: ACTION LOGS -->
+        <div id="tab-logs" class="diagnostic-card">
+            <div id="logs-content-container">
+                <div class="no-data">Loading system logs...</div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    // Leaflet.js Interactive Map Initialization
+    let map = L.map('map').setView([35.6762, 139.6503], 12);
+    
+    // Modern Dark Mode map tiles
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+    }).addTo(map);
+
+    let activeMarkers = [];
+
+    // Tokyo Central mock/real station points
+    let stations = [
+        { name: "Shinjuku Station Docomo Share", lat: 35.6895, lng: 139.6917, status: "healthy", bikes: 14, slots: 10 },
+        { name: "Shibuya Station Docomo Share", lat: 35.6580, lng: 139.7016, status: "healthy", bikes: 18, slots: 8 },
+        { name: "Tokyo Station North Share", lat: 35.6812, lng: 139.7671, status: "warning", bikes: 2, slots: 22 },
+        { name: "Shinjuku East Docomo Share", lat: 35.6942, lng: 139.7028, status: "critical", bikes: 0, slots: 25 },
+        { name: "Roppongi Hills share station", lat: 35.6605, lng: 139.7291, status: "healthy", bikes: 11, slots: 9 }
+    ];
+
+    function renderMapMarkers() {
+        activeMarkers.forEach(m => map.removeLayer(m));
+        activeMarkers = [];
+
+        stations.forEach(s => {
+            let color = "#56d364"; // Green
+            if (s.status === "warning") color = "#FEE75C"; // Yellow
+            if (s.status === "critical") color = "#ED4245"; // Red
+
+            let circle = L.circleMarker([s.lat, s.lng], {
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.5,
+                radius: 10,
+                weight: 2
+            }).addTo(map);
+
+            circle.bindPopup(`
+                <div style="color:#000; font-family:'Outfit',sans-serif; font-size:13px;">
+                    <strong>${s.name}</strong><br>
+                    Status: <span style="color:${color}; font-weight:700;">${s.status.toUpperCase()}</span><br>
+                    Available Bikes: <strong>${s.bikes}</strong><br>
+                    Empty Slots: <strong>${s.slots}</strong>
+                </div>
+            `);
+
+            activeMarkers.push(circle);
+        });
+    }
+
+    renderMapMarkers();
+
+    // Data Load State Variables
+    let currentAnomalies = [];
+    let currentLogs = [];
+    let selectedAnomalyId = null;
+
+    // Fetch and refresh alerts & logs
+    async function refreshDashboardData() {
+        try {
+            const anomaliesRes = await fetch("/api/anomalies");
+            currentAnomalies = await anomaliesRes.json();
+            
+            const logsRes = await fetch("/api/logs");
+            currentLogs = await logsRes.json();
+            
+            renderAnomalies();
+            renderLogs();
+        } catch (e) {
+            console.error("Dashboard refresh failed: ", e);
+        }
+    }
+
+    function renderAnomalies() {
+        const container = document.getElementById("anomalies-container");
+        if (currentAnomalies.length === 0) {
+            container.innerHTML = `<div class="no-data">No active anomalies detected. System running nominal.</div>`;
+            return;
+        }
+
+        container.innerHTML = currentAnomalies.map(anom => {
+            const severity = Math.abs(anom.z_score) > 5.0 || anom.z_score === 99.0 ? 'critical' : 'warning';
+            const badgeClass = `badge-${severity}`;
+            const activeClass = selectedAnomalyId === anom.id ? 'active' : '';
+            const sourceClass = `source-${anom.source}`;
+            const displayZ = anom.z_score === 99.0 ? "INFINITE (Policy)" : anom.z_score;
+            
+            return `
+                <div class="anomaly-item ${activeClass}" onclick="selectAnomaly('${anom.id}')">
+                    <div class="anomaly-meta">
+                        <span class="anomaly-source ${sourceClass}">${anom.source}</span>
+                        <span class="anomaly-badge ${badgeClass}">${severity.toUpperCase()}</span>
+                    </div>
+                    <div class="anomaly-metric">${anom.metric}</div>
+                    <div class="anomaly-details">
+                        <span>Z-Score: <strong>${displayZ}</strong></span>
+                        <span>Value: <strong>${anom.current_value}</strong> (mean: ${anom.baseline_mean})</span>
+                    </div>
+                    <span class="anomaly-time text-secondary"><i class="fa-regular fa-clock"></i> ${new Date(anom.detected_at).toLocaleString()}</span>
+                </div>
+            `;
+        }).join("");
+    }
+
+    function renderLogs() {
+        const container = document.getElementById("logs-content-container");
+        if (currentLogs.length === 0) {
+            container.innerHTML = `<div class="no-data">No incident action logs available.</div>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:16px;">
+                ${currentLogs.map(log => {
+                    const badgeClass = log.classification === 'critical' ? 'badge-critical' : 'badge-warning';
+                    return `
+                        <div style="border-bottom:1px solid var(--border-glow); padding-bottom:16px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span class="anomaly-badge ${badgeClass}">${log.classification.toUpperCase()}</span>
+                                <span style="font-size:12px; color:var(--text-secondary);"><i class="fa-regular fa-clock"></i> ${new Date(log.triggered_at).toLocaleString()}</span>
+                            </div>
+                            <div style="font-weight:600; font-size:15px; margin-bottom:4px;">Action Taken: ${log.action}</div>
+                            <div class="diagnostic-content" style="color:var(--text-secondary); font-size:14px; margin-bottom:8px;">${log.human_message}</div>
+                            <div style="font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--accent-blue);">Anomaly Ref: ${log.anomaly_id}</div>
+                        </div>
+                    `;
+                }).join("")}
+            </div>
+        `;
+    }
+
+    function selectAnomaly(id) {
+        selectedAnomalyId = id;
+        renderAnomalies();
+        
+        // Find matching diagnostic log
+        const log = currentLogs.find(l => l.anomaly_id === id);
+        const container = document.getElementById("gemini-content-container");
+        
+        if (!log) {
+            container.innerHTML = `
+                <div class="no-data">
+                    <i class="fa-solid fa-brain" style="font-size:24px; color:var(--accent-blue); margin-bottom:10px;"></i><br>
+                    Gemini diagnosis is currently loading or analyzing telemetry context...
+                </div>
+            `;
+            return;
+        }
+
+        const scoreColor = log.classification === 'critical' ? 'var(--accent-red)' : 'var(--accent-yellow)';
+        
+        container.innerHTML = `
+            <div class="diagnostic-header">
+                <div>
+                    <h3 style="font-size:20px; font-weight:700;">Incident Diagnostic Report</h3>
+                    <p class="subtitle" style="font-size:13px;">Auto-Diagnosed Root Cause</p>
+                </div>
+                <div class="score-circle" style="border-color:${scoreColor}; color:${scoreColor}">
+                    ${parseInt(log.confidence * 100)}%
+                </div>
+            </div>
+            
+            <div class="diagnostic-section">
+                <div class="diagnostic-title"><i class="fa-solid fa-stethoscope"></i> Root Cause Diagnosis</div>
+                <div class="diagnostic-content">${log.root_cause}</div>
+            </div>
+
+            <div class="diagnostic-section">
+                <div class="diagnostic-title"><i class="fa-solid fa-gears"></i> Automated Correction Action</div>
+                <div class="diagnostic-content">${log.action}</div>
+            </div>
+
+            <div class="diagnostic-section">
+                <div class="diagnostic-title"><i class="fa-solid fa-code"></i> Resolution SQL script executed</div>
+                <pre><code>${log.fix_sql}</code></pre>
+            </div>
+
+            <div class="diagnostic-section">
+                <div class="diagnostic-title"><i class="fa-solid fa-comment-dots"></i> Operator Message</div>
+                <div class="diagnostic-content" style="font-style:italic; border-left:3px solid var(--accent-blue); padding-left:14px;">"${log.human_message}"</div>
+            </div>
+        `;
+    }
+
+    // Tab Switching Logic
+    function switchTab(tab) {
+        document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
+        document.querySelectorAll(".diagnostic-card").forEach(card => card.classList.remove("active"));
+        
+        if (tab === 'gemini') {
+            event.target.classList.add("active");
+            document.getElementById("tab-gemini").classList.add("active");
+        } else {
+            event.target.classList.add("active");
+            document.getElementById("tab-logs").classList.add("active");
+        }
+    }
+
+    // Ingest loops trigger API calls
+    async function triggerIngest(source) {
+        const btn = source === 'citybikes' ? document.getElementById("btn-bikes") : document.getElementById("btn-github");
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="fa-solid fa-spinner spinner"></i> Processing...`;
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(`/ingest/${source}`, { method: "POST" });
+            const data = await res.json();
+            
+            // Adjust mock map coordinates if ingestion triggered low bike warnings
+            if (source === 'citybikes') {
+                stations[3].status = "critical";
+                stations[3].bikes = 0;
+                renderMapMarkers();
+            }
+
+            // Play sound, refresh data
+            refreshDashboardData();
+            setTimeout(() => {
+                // Autoselect the newly created anomaly
+                if (currentAnomalies.length > 0) {
+                    selectAnomaly(currentAnomalies[0].id);
+                }
+            }, 1000);
+
+        } catch (e) {
+            console.error("Trigger ingestion error: ", e);
+        } finally {
+            btn.innerHTML = origHtml;
+            btn.disabled = false;
+        }
+    }
+
+    // Test Alert API Trigger
+    async function triggerTestAlert() {
+        const btn = document.getElementById("btn-test");
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner spinner"></i> Triggering Alert...`;
+
+        try {
+            const res = await fetch("/api/test-alert?severity=critical&source=github", { method: "POST" });
+            await res.json();
+            
+            await refreshDashboardData();
+            
+            if (currentAnomalies.length > 0) {
+                selectAnomaly(currentAnomalies[0].id);
+            }
+        } catch (e) {
+            console.error("Test alert trigger failed: ", e);
+        } finally {
+            btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Trigger Test Alert`;
+            btn.disabled = false;
+        }
+    }
+
+    // Initial Load & Polling Loop (refresh every 10 seconds)
+    refreshDashboardData();
+    setInterval(refreshDashboardData, 10000);
+</script>
+</body>
+</html>
