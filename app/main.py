@@ -7,6 +7,7 @@ import json
 import uuid
 import math
 from datetime import datetime, timezone, timedelta
+from pydantic import BaseModel
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -321,25 +322,45 @@ def get_metrics():
     }
 
 
+class CustomAlertPayload(BaseModel):
+    source: str = "citybikes"
+    metric: str = "docomo-tokyo-shibuya-station"
+    current_value: float = 0.0
+    baseline_mean: float = 25.4
+    z_score: float = -3.95
+    severity: str = "critical"
+
 @app.post("/api/test-alert")
-def trigger_test_alert(severity: str = "warning", source: str = "citybikes"):
-    """Trigger a mock alert immediately for live demonstration verification."""
-    mock_anom = {
-        "id": f"test-{os.urandom(4).hex()}",
-        "detected_at": datetime.now(timezone.utc).isoformat(),
-        "source": source,
-        "metric": "docomo-tokyo-shibuya-station" if source == "citybikes" else f"direct_push_by_ahnjh51",
-        "z_score": -3.95 if severity == "warning" else -5.12,
-        "current_value": 0.0,
-        "baseline_mean": 25.4,
-        "status": "new",
-        "github_issue_url": ""
-    }
-    
-    if source == "github":
-        mock_anom["z_score"] = 99.0
-        mock_anom["current_value"] = 1.0
-        mock_anom["baseline_mean"] = 0.0
+def trigger_test_alert(payload: CustomAlertPayload = None, severity: str = "warning", source: str = "citybikes"):
+    """Trigger a custom or mock alert with fake data for live demonstration verification."""
+    if payload:
+        mock_anom = {
+            "id": f"custom-{os.urandom(4).hex()}",
+            "detected_at": datetime.now(timezone.utc).isoformat(),
+            "source": payload.source,
+            "metric": payload.metric,
+            "z_score": payload.z_score,
+            "current_value": payload.current_value,
+            "baseline_mean": payload.baseline_mean,
+            "status": "new",
+            "github_issue_url": ""
+        }
+    else:
+        mock_anom = {
+            "id": f"test-{os.urandom(4).hex()}",
+            "detected_at": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+            "metric": "docomo-tokyo-shibuya-station" if source == "citybikes" else f"direct_push_by_ahnjh51",
+            "z_score": -3.95 if severity == "warning" else -5.12,
+            "current_value": 0.0,
+            "baseline_mean": 25.4,
+            "status": "new",
+            "github_issue_url": ""
+        }
+        if source == "github":
+            mock_anom["z_score"] = 99.0
+            mock_anom["current_value"] = 1.0
+            mock_anom["baseline_mean"] = 0.0
         
     mock_anomalies.insert(0, mock_anom)
     diag = analyze_anomaly(mock_anom)
