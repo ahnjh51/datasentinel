@@ -34,14 +34,17 @@ jobs:
           pytest tests/ -v --tb=short
 
       - name: Authenticate to Google Cloud
+        if: "${{ secrets.GCP_SA_KEY != '' }}"
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
+        if: "${{ secrets.GCP_SA_KEY != '' }}"
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Build and Push Docker image
+        if: "${{ secrets.GCP_SA_KEY != '' }}"
         run: |
           BUILD_ID=$(gcloud builds submit --tag $REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/datasentinel/app:${{ github.sha }} --async --format="value(id)" --quiet)
           echo "Build successfully queued with ID: $BUILD_ID"
@@ -60,6 +63,7 @@ jobs:
           done
 
       - name: Deploy to Google Cloud Run
+        if: "${{ secrets.GCP_SA_KEY != '' }}"
         run: |
           gcloud run deploy $SERVICE_NAME \
             --image $REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/datasentinel/app:${{ github.sha }} \
