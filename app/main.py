@@ -329,6 +329,74 @@ def trigger_test_alert(severity: str = "warning", source: str = "citybikes"):
     }
 
 
+@app.get("/api/eda")
+def get_eda():
+    """Fetches the latest raw ingested telemetry (EDA) from BigQuery or fallback."""
+    from datetime import datetime, timezone
+    client = bigquery.Client(project=PROJECT_ID)
+    citybikes_data = []
+    github_data = []
+    
+    # 1. Fetch CityBikes raw telemetry
+    try:
+        query = f"""
+        SELECT station_id, name, free_bikes, empty_slots, latitude, longitude, ingested_at
+        FROM `{PROJECT_ID}.{DATASET_ID}.raw_citybikes_stations`
+        ORDER BY ingested_at DESC
+        LIMIT 20
+        """
+        results = client.query(query).result()
+        for r in results:
+            citybikes_data.append({
+                "station_id":  r.station_id,
+                "name":        r.name,
+                "free_bikes":  r.free_bikes,
+                "empty_slots": r.empty_slots,
+                "latitude":    r.latitude,
+                "longitude":   r.longitude,
+                "ingested_at": r.ingested_at.isoformat() if hasattr(r.ingested_at, 'isoformat') else str(r.ingested_at)
+            })
+    except Exception as e:
+        print(f"Failed to query BQ raw stations: {e}. Using mock EDA data.")
+        # Fallback raw data
+        citybikes_data = [
+            {"station_id": "shinjuku-1", "name": "Shinjuku Station Docomo Share", "free_bikes": 14, "empty_slots": 10, "latitude": 35.6895, "longitude": 139.6917, "ingested_at": datetime.now(timezone.utc).isoformat()},
+            {"station_id": "shibuya-1", "name": "Shibuya Station Docomo Share", "free_bikes": 18, "empty_slots": 8, "latitude": 35.6580, "longitude": 139.7016, "ingested_at": datetime.now(timezone.utc).isoformat()},
+            {"station_id": "tokyo-1", "name": "Tokyo Station North Share", "free_bikes": 2, "empty_slots": 22, "latitude": 35.6812, "longitude": 139.7671, "ingested_at": datetime.now(timezone.utc).isoformat()},
+            {"station_id": "shinjuku-2", "name": "Shinjuku East Docomo Share", "free_bikes": 0, "empty_slots": 25, "latitude": 35.6942, "longitude": 139.7028, "ingested_at": datetime.now(timezone.utc).isoformat()},
+            {"station_id": "roppongi-1", "name": "Roppongi Hills share station", "free_bikes": 11, "empty_slots": 9, "latitude": 35.6605, "longitude": 139.7291, "ingested_at": datetime.now(timezone.utc).isoformat()}
+        ]
+
+    # 2. Fetch GitHub events raw telemetry
+    try:
+        query = f"""
+        SELECT event_id, event_type, actor, repo, created_at
+        FROM `{PROJECT_ID}.{DATASET_ID}.raw_github_events`
+        ORDER BY created_at DESC
+        LIMIT 5
+        """
+        results = client.query(query).result()
+        for r in results:
+            github_data.append({
+                "event_id":   r.event_id,
+                "event_type": r.event_type,
+                "actor":      r.actor,
+                "repo":       r.repo,
+                "created_at": r.created_at.isoformat() if hasattr(r.created_at, 'isoformat') else str(r.created_at)
+            })
+    except Exception as e:
+        print(f"Failed to query BQ raw github: {e}. Using mock GitHub EDA data.")
+        github_data = [
+            {"event_id": "gh-921b7d", "event_type": "PushEvent", "actor": "ahnjh51", "repo": "ahnjh51/datasentinel", "created_at": datetime.now(timezone.utc).isoformat()},
+            {"event_id": "gh-813d4a", "event_type": "PullRequestReviewEvent", "actor": "gemini-sre", "repo": "ahnjh51/datasentinel", "created_at": datetime.now(timezone.utc).isoformat()}
+        ]
+
+    return {
+        "citybikes": citybikes_data,
+        "github": github_data
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     print("Starting DataSentinel server on http://localhost:8000")

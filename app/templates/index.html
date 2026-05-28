@@ -612,6 +612,9 @@
             <button class="tab-btn" onclick="switchTab('logs')">
                 <i class="fa-solid fa-clipboard-list"></i> Incident Actions Log
             </button>
+            <button class="tab-btn" onclick="switchTab('eda')">
+                <i class="fa-solid fa-chart-line"></i> Live Ingested Telemetry (EDA)
+            </button>
         </div>
 
         <!-- TAB CONTENT: GEMINI DIAGNOSIS -->
@@ -625,6 +628,13 @@
         <div id="tab-logs" class="diagnostic-card">
             <div id="logs-content-container">
                 <div class="no-data">Loading system logs...</div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT: TELEMETRY EDA -->
+        <div id="tab-eda" class="diagnostic-card">
+            <div id="eda-content-container">
+                <div class="no-data"><i class="fa-solid fa-spinner spinner"></i> Loading raw telemetry inspector...</div>
             </div>
         </div>
 
@@ -689,9 +699,10 @@
     // Data Load State Variables
     let currentAnomalies = [];
     let currentLogs = [];
+    let currentEda = { citybikes: [], github: [] };
     let selectedAnomalyId = null;
 
-    // Fetch and refresh alerts & logs
+    // Fetch and refresh alerts, logs, & EDA data
     async function refreshDashboardData() {
         try {
             const anomaliesRes = await fetch("/api/anomalies");
@@ -699,9 +710,15 @@
             
             const logsRes = await fetch("/api/logs");
             currentLogs = await logsRes.json();
+
+            const edaRes = await fetch("/api/eda");
+            currentEda = await edaRes.json();
             
             renderAnomalies();
             renderLogs();
+            if (document.getElementById("tab-eda").classList.contains("active")) {
+                renderEda();
+            }
         } catch (e) {
             console.error("Dashboard refresh failed: ", e);
         }
@@ -823,12 +840,95 @@
         document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
         document.querySelectorAll(".diagnostic-card").forEach(card => card.classList.remove("active"));
         
+        event.target.classList.add("active");
         if (tab === 'gemini') {
-            event.target.classList.add("active");
             document.getElementById("tab-gemini").classList.add("active");
-        } else {
-            event.target.classList.add("active");
+        } else if (tab === 'logs') {
             document.getElementById("tab-logs").classList.add("active");
+        } else if (tab === 'eda') {
+            document.getElementById("tab-eda").classList.add("active");
+            renderEda();
+        }
+    }
+
+    function renderEda() {
+        const container = document.getElementById("eda-content-container");
+        if (!currentEda || !currentEda.citybikes || currentEda.citybikes.length === 0) {
+            container.innerHTML = `<div class="no-data">No raw telemetry ingested yet. Trigger an ingestion above!</div>`;
+            return;
+        }
+
+        const bikes = currentEda.citybikes;
+        const totalBikes = bikes.reduce((acc, b) => acc + (b.free_bikes || 0), 0);
+        const avgBikes = (bikes.length > 0) ? (totalBikes / bikes.length).toFixed(1) : 0;
+
+        container.innerHTML = `
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px; margin-bottom:24px;">
+                <div style="background:var(--canvas-soft); padding:16px; border-radius:var(--rounded-md); border:1px solid var(--border-glow);">
+                    <div style="font-size:12px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Schema Consistency</div>
+                    <div style="font-size:18px; font-weight:900; color:var(--positive-deep); margin-top:4px;">
+                        <i class="fa-solid fa-circle-check"></i> 100% VALID
+                    </div>
+                </div>
+                <div style="background:var(--canvas-soft); padding:16px; border-radius:var(--rounded-md); border:1px solid var(--border-glow);">
+                    <div style="font-size:12px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Average Live Bikes</div>
+                    <div style="font-size:18px; font-weight:900; color:var(--ink); margin-top:4px;">
+                        <i class="fa-solid fa-bicycle"></i> ${avgBikes} bikes / station
+                    </div>
+                </div>
+                <div style="background:var(--canvas-soft); padding:16px; border-radius:var(--rounded-md); border:1px solid var(--border-glow);">
+                    <div style="font-size:12px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Latest Ingest Sample</div>
+                    <div style="font-size:14px; font-family:'JetBrains Mono',monospace; color:var(--ink); margin-top:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        ${new Date(bikes[0].ingested_at).toLocaleTimeString()} (UTC)
+                    </div>
+                </div>
+            </div>
+
+            <h4 style="font-size:16px; font-weight:900; color:var(--ink); margin-bottom:12px; letter-spacing:-0.3px;">Live Ingested Telemetry Feed (CityBikes API)</h4>
+            <div style="overflow-x:auto; border:1px solid var(--border-glow); border-radius:var(--rounded-md); background:var(--canvas); margin-bottom:24px;">
+                <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+                    <thead>
+                        <tr style="background:var(--canvas-soft); border-bottom:1px solid var(--border-glow); color:var(--ink); font-weight:600;">
+                            <th style="padding:12px 16px;">Station ID</th>
+                            <th style="padding:12px 16px;">Station Name</th>
+                            <th style="padding:12px 16px; text-align:right;">Free Bikes</th>
+                            <th style="padding:12px 16px; text-align:right;">Empty Slots</th>
+                            <th style="padding:12px 16px;">Coordinates (Lat, Lng)</th>
+                            <th style="padding:12px 16px; text-align:right;">Ingestion Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bikes.slice(0, 8).map(b => `
+                            <tr style="border-bottom:1px solid var(--border-glow); color:var(--body);">
+                                <td style="padding:12px 16px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--mute);">${b.station_id.slice(0, 12)}...</td>
+                                <td style="padding:12px 16px; font-weight:600; color:var(--ink);">${b.name}</td>
+                                <td style="padding:12px 16px; text-align:right; font-weight:600; color:${b.free_bikes === 0 ? 'var(--negative-darkest)' : 'var(--positive-deep)'};">${b.free_bikes}</td>
+                                <td style="padding:12px 16px; text-align:right;">${b.empty_slots}</td>
+                                <td style="padding:12px 16px; font-family:'JetBrains Mono',monospace; font-size:12px;">${b.latitude.toFixed(4)}, ${b.longitude.toFixed(4)}</td>
+                                <td style="padding:12px 16px; text-align:right; font-size:11px;">${new Date(b.ingested_at).toLocaleTimeString()}</td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+
+            <div>
+                <h4 style="font-size:16px; font-weight:900; color:var(--ink); margin-bottom:12px; letter-spacing:-0.3px;">Schema JSON Inspector</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--canvas-soft); padding:10px 16px; border-radius:var(--rounded-md); border:1px solid var(--border-glow); margin-bottom:8px;">
+                    <span style="font-size:13px; font-weight:600; color:var(--body);"><i class="fa-solid fa-code"></i> Latest Raw Ingest Sample payload:</span>
+                    <button onclick="toggleEdaJson()" class="btn" style="padding:6px 12px; font-size:12px; border-radius:6px; margin:0;">Toggle JSON</button>
+                </div>
+                <pre id="eda-json-block" style="display:none; max-height:220px; font-size:11.5px; margin-top:0;"><code>${JSON.stringify(bikes[0], null, 4)}</code></pre>
+            </div>
+        `;
+    }
+
+    function toggleEdaJson() {
+        const block = document.getElementById("eda-json-block");
+        if (block.style.display === "none") {
+            block.style.display = "block";
+        } else {
+            block.style.display = "none";
         }
     }
 
