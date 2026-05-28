@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-NETWORK_ID = os.getenv("CITYBIKES_NETWORK_ID", "docomo-tokyo")
+NETWORK_ID = os.getenv("CITYBIKES_NETWORK_ID", "docomo-cycle-tokyo")
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "datasentinel-hackathon")
 TABLE_ID = f"{PROJECT_ID}.datasentinel.raw_citybikes_stations"
 
